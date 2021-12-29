@@ -28,6 +28,7 @@ internal class AcmeCertificateFactory
     private readonly IHostApplicationLifetime _appLifetime;
     private readonly TlsAlpnChallengeResponder _tlsAlpnChallengeResponder;
     private readonly TaskCompletionSource<object?> _appStarted = new();
+    private readonly ICertificateSource _certificateSource;
     private AcmeClient? _client;
     private IKey? _acmeAccountKey;
 
@@ -40,6 +41,7 @@ internal class AcmeCertificateFactory
         IHostApplicationLifetime appLifetime,
         TlsAlpnChallengeResponder tlsAlpnChallengeResponder,
         ICertificateAuthorityConfiguration certificateAuthority,
+        ICertificateSource certificateSource,
         IAccountStore? accountRepository = null)
     {
         _acmeClientFactory = acmeClientFactory;
@@ -56,6 +58,7 @@ internal class AcmeCertificateFactory
             _appStarted.TrySetResult(null);
         }
 
+        _certificateSource = certificateSource;
         _accountRepository = accountRepository ?? new FileSystemAccountStore(logger, certificateAuthority);
     }
 
@@ -291,6 +294,8 @@ internal class AcmeCertificateFactory
         _logger.LogAcmeAction("NewCertificate");
 
         var pfxBuilder = acmeCert.ToPfx(privateKey);
+        var certs = await this._certificateSource.GetCertificatesAsync(cancellationToken);
+        certs.ToList().ForEach(c => pfxBuilder.AddIssuer(c.RawData));
         var pfx = pfxBuilder.Build("HTTPS Cert - " + _options.Value.DomainNames, string.Empty);
         return new X509Certificate2(pfx, string.Empty, X509KeyStorageFlags.Exportable);
     }
